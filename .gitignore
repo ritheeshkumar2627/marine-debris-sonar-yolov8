@@ -1,0 +1,27 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Large Datasets (Avoid GitHub 100MB limit & repo bloat)
+raw_data/
+data/images/
+data/labels/
+
+# YOLO Training & Inference Runs
+runs/
+outputs/
+
+# Large Model Weights (Upload to GitHub Releases instead)
+models/*.pt
+*.pt
+*.onnx
+*.engine
+
+# Environment & IDE
+.venv/
+env/
+venv/
+.idea/
+.vscode/
+*.log

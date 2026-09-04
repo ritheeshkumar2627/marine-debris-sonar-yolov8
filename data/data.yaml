@@ -1,0 +1,19 @@
+# YOLOv8 dataset configuration for Marine Debris Forward-Looking Sonar (FLS) Dataset
+# Sensor: ARIS Explorer 3000 (Ocean Systems Lab / Heriot-Watt University)
+
+path: C:/Users/dyaga/.gemini/antigravity/scratch/sonar_debris_yolov8/data
+train: images/train
+val: images/val
+
+# 10 Marine Debris Classes in Watertank Release 1.0 (exact class-id mapping)
+names:
+  0: can
+  1: bottle
+  2: drink-carton
+  3: chain
+  4: propeller
+  5: tire
+  6: hook
+  7: valve
+  8: shampoo-bottle
+  9: standing-bottle
