@@ -12,15 +12,23 @@ sonar-ml/
 
 # Training outputs
 runs/
+outputs/
 *.cache
 
 # Datasets
 raw_data/
 data/images/
 data/labels/
+data_ghostvision/images/
+data_ghostvision/labels/
 
-# Model training files
+# Model training files & weights
 weights/
+models/*.pt
+*.pt
+*.onnx
+*.safetensors
+*.engine
 
 # Jupyter
 .ipynb_checkpoints/
