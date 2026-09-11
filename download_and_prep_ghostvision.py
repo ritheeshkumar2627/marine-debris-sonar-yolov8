@@ -2,29 +2,48 @@
 download_and_prep_ghostvision.py
 ================================
 Downloads and prepares the official GhostVision Side-Scan Sonar (SSS) dataset:
-"PINGEcosystem/sss-crab-pot-detection-ds" from Hugging Face.
+6,674 Side-Scan Sonar images of derelict crab pots & marine debris.
 
-- 6,674 Side-Scan Sonar images of derelict crab pots & marine debris
-- Classes:
+Sources:
+1. Zenodo Archive (Public direct download, no login/token required):
+   https://zenodo.org/records/20056679
+2. Hugging Face Hub (gated, requires HF account & login):
+   PINGEcosystem/sss-crab-pot-detection-ds
+
+Classes:
     0: Crab-Pot
     1: Maybe-Crab-Pot
-- Automatically converts annotations to normalized YOLO format (.txt)
-- Organizes into data_ghostvision/images/ and data_ghostvision/labels/
+
+Automatically converts annotations to standard normalized YOLO format (.txt)
+and organizes data into:
+    data_ghostvision/
+      images/train/, images/val/
+      labels/train/, labels/val/
+      data.yaml
 """
 
 import os
+import sys
+import json
+import shutil
 import random
+import zipfile
+import urllib.request
 from pathlib import Path
 import yaml
 from PIL import Image
 
 BASE_DIR = Path(__file__).resolve().parent
 GV_DATA_DIR = BASE_DIR / "data_ghostvision"
+MODELS_DIR = BASE_DIR / "models"
 
 IMG_TRAIN_DIR = GV_DATA_DIR / "images" / "train"
 IMG_VAL_DIR = GV_DATA_DIR / "images" / "val"
 LBL_TRAIN_DIR = GV_DATA_DIR / "labels" / "train"
 LBL_VAL_DIR = GV_DATA_DIR / "labels" / "val"
+
+ZENODO_URL = "https://zenodo.org/api/records/20056679/files/GhostVision_DatasetAndModels.zip/content"
+ZIP_PATH = GV_DATA_DIR / "GhostVision_DatasetAndModels.zip"
 
 VAL_SPLIT = 0.20
 
@@ -34,37 +53,172 @@ CLASS_MAP = {
 }
 
 
-def main():
-    print("=" * 70)
-    print("GhostVision Side-Scan Sonar (SSS) Dataset Preparation")
-    print("Dataset: PINGEcosystem/sss-crab-pot-detection-ds (Hugging Face)")
-    print("=" * 70)
+def download_with_progress(url: str, output_path: Path):
+    """Downloads a file with clean progress reporting."""
+    print(f"[*] Downloading dataset from: {url}")
+    print(f"[*] Destination: {output_path}")
 
-    try:
-        from datasets import load_dataset
-    except ImportError:
-        print("[!] The 'datasets' library is required to download from Hugging Face.")
-        print("    Please install it: pip install datasets huggingface_hub")
-        return
+    class ProgressHook:
+        def __init__(self):
+            self.last_percent = -1
+
+        def __call__(self, block_num, block_size, total_size):
+            downloaded = block_num * block_size
+            if total_size > 0:
+                percent = int(downloaded * 100 / total_size)
+                if percent % 10 == 0 and percent != self.last_percent:
+                    mb_down = downloaded / (1024 * 1024)
+                    mb_tot = total_size / (1024 * 1024)
+                    print(f"    [{percent:3d}%] {mb_down:.1f} MB / {mb_tot:.1f} MB downloaded...")
+                    self.last_percent = percent
+
+    urllib.request.urlretrieve(url, str(output_path), reporthook=ProgressHook())
+    print("[+] Download complete!")
+
+
+def convert_metadata_jsonl_to_yolo(split_folder: Path, target_split: str, box_counter: list) -> int:
+    """Parses a metadata.jsonl file and writes YOLO label .txt files and copies images."""
+    meta_path = split_folder / "metadata.jsonl"
+    if not meta_path.exists():
+        return 0
+
+    target_img_dir = IMG_VAL_DIR if target_split == "val" else IMG_TRAIN_DIR
+    target_lbl_dir = LBL_VAL_DIR if target_split == "val" else LBL_TRAIN_DIR
+
+    processed = 0
+    with open(meta_path, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            item = json.loads(line)
+            file_name = item.get("file_name")
+            if not file_name:
+                continue
+
+            src_img = split_folder / file_name
+            if not src_img.exists():
+                continue
+
+            try:
+                with Image.open(src_img) as im:
+                    img_w, img_h = im.size
+            except Exception:
+                continue
+
+            stem = src_img.stem
+            objects = item.get("objects", {})
+            bboxes = objects.get("bbox", [])
+            categories = objects.get("category", [])
+
+            yolo_lines = []
+            for bbox, cat in zip(bboxes, categories):
+                cat_name = str(cat).strip().lower()
+                cls_id = CLASS_MAP.get(cat_name, 0)
+
+                x, y, w, h = bbox
+                xc = (x + w / 2.0) / float(img_w)
+                yc = (y + h / 2.0) / float(img_h)
+                nw = w / float(img_w)
+                nh = h / float(img_h)
+
+                xc = max(0.0, min(1.0, xc))
+                yc = max(0.0, min(1.0, yc))
+                nw = max(0.0, min(1.0, nw))
+                nh = max(0.0, min(1.0, nh))
+
+                yolo_lines.append(f"{cls_id} {xc:.6f} {yc:.6f} {nw:.6f} {nh:.6f}")
+                box_counter[0] += 1
+
+            # Destination files
+            dst_img = target_img_dir / src_img.name
+            dst_lbl = target_lbl_dir / f"{stem}.txt"
+
+            shutil.copy2(src_img, dst_img)
+            with open(dst_lbl, "w") as lf:
+                if yolo_lines:
+                    lf.write("\n".join(yolo_lines) + "\n")
+
+            processed += 1
+
+    return processed
+
+
+def prep_via_zenodo():
+    """Fallback method downloading official Zenodo archive with zero authentication required."""
+    print("\n[*] Initializing direct Zenodo download pipeline...")
+    GV_DATA_DIR.mkdir(parents=True, exist_ok=True)
+    MODELS_DIR.mkdir(parents=True, exist_ok=True)
+
+    if not ZIP_PATH.exists():
+        download_with_progress(ZENODO_URL, ZIP_PATH)
+    else:
+        print(f"[*] Found existing archive at: {ZIP_PATH} ({ZIP_PATH.stat().st_size / (1024*1024):.1f} MB)")
+
+    print("[*] Extracting GhostVision dataset and models...")
+    extract_dir = GV_DATA_DIR / "zenodo_extracted"
+    extract_dir.mkdir(parents=True, exist_ok=True)
+
+    with zipfile.ZipFile(ZIP_PATH, "r") as zf:
+        zf.extractall(extract_dir)
+
+    print("[+] Archive extracted successfully. Converting annotations to YOLO format...")
 
     for d in [IMG_TRAIN_DIR, IMG_VAL_DIR, LBL_TRAIN_DIR, LBL_VAL_DIR]:
         d.mkdir(parents=True, exist_ok=True)
 
-    print("[*] Fetching dataset from Hugging Face...")
+    box_counter = [0]
+    total_imgs = 0
+
+    ds_root = extract_dir / "sss-crab-pot-detection-ds"
+    if not ds_root.exists():
+        # Search recursively
+        matches = list(extract_dir.rglob("metadata.jsonl"))
+        folders_to_process = [m.parent for m in matches]
+    else:
+        folders_to_process = []
+        for split in ["train", "valid", "val", "test"]:
+            p = ds_root / split
+            if p.exists():
+                folders_to_process.append(p)
+
+    for folder in folders_to_process:
+        split_name = folder.name.lower()
+        target_split = "val" if split_name in ["valid", "val", "test"] else "train"
+        count = convert_metadata_jsonl_to_yolo(folder, target_split, box_counter)
+        print(f"    Processed {count} images from '{folder.name}' -> mapped to {target_split}")
+        total_imgs += count
+
+    # Also copy pre-trained YOLO weights from Zenodo if available
+    pretrain_matches = list(extract_dir.rglob("*.safetensors")) + list(extract_dir.rglob("*.onnx"))
+    for model_file in pretrain_matches:
+        dst = MODELS_DIR / model_file.name
+        shutil.copy2(model_file, dst)
+        print(f"[+] Found pre-trained GhostVision model: {model_file.name} -> copied to models/")
+
+    return total_imgs, box_counter[0]
+
+
+def prep_via_huggingface():
+    """Downloads from Hugging Face Hub (works if user has HF login / token)."""
+    from datasets import load_dataset
+
+    for d in [IMG_TRAIN_DIR, IMG_VAL_DIR, LBL_TRAIN_DIR, LBL_VAL_DIR]:
+        d.mkdir(parents=True, exist_ok=True)
+
+    print("[*] Attempting to load from Hugging Face Hub...")
     ds = load_dataset("PINGEcosystem/sss-crab-pot-detection-ds")
 
-    # Combine splits or use default train split
     split_name = "train" if "train" in ds else list(ds.keys())[0]
     data_split = ds[split_name]
     total_records = len(data_split)
-    print(f"[*] Loaded {total_records} records from split: '{split_name}'. Processing...")
+    print(f"[*] Loaded {total_records} records from Hugging Face '{split_name}'.")
 
     random.seed(42)
-    processed_count = 0
     box_count = 0
+    processed_count = 0
 
     for idx, item in enumerate(data_split):
-        # Image can be PIL Image object or file_name
         img_obj = item.get("image")
         file_name = item.get("file_name", f"sss_ghostvision_{idx:05d}.jpg")
         stem = Path(file_name).stem
@@ -73,8 +227,6 @@ def main():
             continue
 
         img_w, img_h = img_obj.size
-
-        # Parse bounding boxes
         objects = item.get("objects", {})
         bboxes = objects.get("bbox", [])
         categories = objects.get("category", [])
@@ -84,14 +236,12 @@ def main():
             cat_name = str(cat).strip().lower()
             cls_id = CLASS_MAP.get(cat_name, 0)
 
-            # bbox format in HuggingFace SSS dataset is [x, y, w, h] in pixels
             x, y, w, h = bbox
             xc = (x + w / 2.0) / float(img_w)
             yc = (y + h / 2.0) / float(img_h)
             nw = w / float(img_w)
             nh = h / float(img_h)
 
-            # Clamp
             xc = max(0.0, min(1.0, xc))
             yc = max(0.0, min(1.0, yc))
             nw = max(0.0, min(1.0, nw))
@@ -100,24 +250,38 @@ def main():
             yolo_lines.append(f"{cls_id} {xc:.6f} {yc:.6f} {nw:.6f} {nh:.6f}")
             box_count += 1
 
-        # Train / Val Split
         is_val = (random.random() < VAL_SPLIT)
         target_img_dir = IMG_VAL_DIR if is_val else IMG_TRAIN_DIR
         target_lbl_dir = LBL_VAL_DIR if is_val else LBL_TRAIN_DIR
 
-        # Save Image
         out_img_path = target_img_dir / f"{stem}.jpg"
         img_obj.save(out_img_path)
 
-        # Save YOLO Label
         out_lbl_path = target_lbl_dir / f"{stem}.txt"
         with open(out_lbl_path, "w") as lf:
             if yolo_lines:
                 lf.write("\n".join(yolo_lines) + "\n")
 
         processed_count += 1
-        if (idx + 1) % 500 == 0 or (idx + 1) == total_records:
-            print(f"[*] Processed {idx + 1}/{total_records} sonar images...")
+
+    return processed_count, box_count
+
+
+def main():
+    print("=" * 70)
+    print("GhostVision Side-Scan Sonar (SSS) Dataset Preparation")
+    print("=" * 70)
+
+    total_images = 0
+    total_boxes = 0
+
+    # Try Hugging Face first; if gated/authentication fails, fallback to Zenodo
+    try:
+        total_images, total_boxes = prep_via_huggingface()
+    except Exception as e:
+        print(f"\n[!] Hugging Face download note: {e}")
+        print("[*] Gated repository detected. Switching automatically to public Zenodo archive...")
+        total_images, total_boxes = prep_via_zenodo()
 
     # Write data.yaml
     yaml_config = {
@@ -135,8 +299,8 @@ def main():
 
     print("\n" + "=" * 70)
     print("[+] GhostVision SSS dataset successfully converted to YOLO format!")
-    print(f"    Total images:         {processed_count}")
-    print(f"    Total bounding boxes: {box_count}")
+    print(f"    Total images:         {total_images}")
+    print(f"    Total bounding boxes: {total_boxes}")
     print(f"    YAML configuration:   {yaml_path}")
     print(f"    Train images:         {len(list(IMG_TRAIN_DIR.glob('*')))} in {IMG_TRAIN_DIR}")
     print(f"    Val images:           {len(list(IMG_VAL_DIR.glob('*')))} in {IMG_VAL_DIR}")
