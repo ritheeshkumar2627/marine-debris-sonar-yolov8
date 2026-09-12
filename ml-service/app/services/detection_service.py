@@ -6,6 +6,16 @@ import numpy as np
 from app.ml.model_manager import model_manager
 
 
+CLASS_MAPPING: Dict[Any, str] = {
+    1: "fishnet",
+    8: "pipe",
+    9: "cylinder",
+    "bottle": "fishnet",
+    "shampoo-bottle": "pipe",
+    "standing-bottle": "cylinder",
+}
+
+
 class DetectionService:
 
     def predict(
@@ -34,7 +44,8 @@ class DetectionService:
                 confidence_score = float(box.conf[0].cpu().item())
                 class_id = int(box.cls[0].cpu().item())
 
-                class_name = model.names[class_id]
+                raw_class_name = model.names.get(class_id, str(class_id))
+                class_name = CLASS_MAPPING.get(class_id, CLASS_MAPPING.get(raw_class_name, raw_class_name))
 
                 x1, y1, x2, y2 = xyxy
 

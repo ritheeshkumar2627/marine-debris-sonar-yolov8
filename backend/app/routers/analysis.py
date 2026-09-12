@@ -27,7 +27,7 @@ async def test_image_analysis(
     Test endpoint to upload an image and get detection results directly 
     from the connected ML service without saving to the DB.
     """
-    if not file.content_type.startswith("image/"):
+    if file.content_type and not file.content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="File must be an image")
         
     image_bytes = await file.read()

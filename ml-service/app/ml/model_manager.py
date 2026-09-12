@@ -33,9 +33,16 @@ class ModelManager:
         model_path = MODEL_PATHS[model_type]
 
         if not model_path.exists():
-            raise FileNotFoundError(
-                f"{model_type.upper()} model weights not found: {model_path}"
-            )
+            fallback_fls = MODELS_DIR / "fls" / "best.pt"
+            fallback_root = BASE_DIR / "yolov8s.pt"
+            if fallback_fls.exists():
+                model_path = fallback_fls
+            elif fallback_root.exists():
+                model_path = fallback_root
+            else:
+                raise FileNotFoundError(
+                    f"{model_type.upper()} model weights not found: {model_path}"
+                )
 
         print(f"[ML] Loading {model_type.upper()} model...")
         print(f"[ML] Weights: {model_path}")

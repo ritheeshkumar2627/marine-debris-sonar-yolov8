@@ -1,0 +1,77 @@
+/* Varaha — supplementary styles beyond Tailwind utilities */
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  overflow-x: hidden;
+}
+
+::selection {
+  background: #4FD6B5;
+  color: #050B10;
+}
+
+/* nav link underline-on-hover */
+.nav-link {
+  position: relative;
+  color: rgba(243, 239, 230, 0.85);
+  transition: color 0.2s ease;
+}
+.nav-link::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  bottom: -6px;
+  width: 0;
+  height: 1px;
+  background: #4FD6B5;
+  transition: width 0.25s ease;
+}
+.nav-link:hover {
+  color: #F3EFE6;
+}
+.nav-link:hover::after {
+  width: 100%;
+}
+
+/* header goes solid once scrolled (class toggled by script.js) */
+#siteHeader.is-scrolled {
+  background: rgba(5, 11, 16, 0.85);
+  backdrop-filter: blur(14px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* social rail dots */
+.social-dot {
+  color: rgba(243, 239, 230, 0.55);
+  transition: color 0.2s ease, transform 0.2s ease;
+}
+.social-dot:hover {
+  color: #4FD6B5;
+  transform: translateY(-2px);
+}
+
+/* subtle shimmer band across the hero waves */
+.wave-shimmer {
+  background: linear-gradient(
+    100deg,
+    transparent 30%,
+    rgba(79, 214, 181, 0.12) 48%,
+    transparent 66%
+  );
+  animation: shimmer 7s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+  0%   { transform: translateX(-15%); }
+  50%  { transform: translateX(15%); }
+  100% { transform: translateX(-15%); }
+}
+
+/* respect reduced motion preference */
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .wave-shimmer { animation: none; }
+}
