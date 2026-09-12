@@ -1,0 +1,61 @@
+# Environment files & Secrets
+.env
+.env.*
+!.env.example
+
+# Virtual environments
+venv/
+.venv/
+env/
+.env/
+sonar-ml/
+
+# Python cache & build outputs
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+.coverage
+htmlcov/
+*.bak
+
+# Model training files & Large YOLO Models
+yolov8s.pt
+*.pt
+*.onnx
+*.engine
+*.weights
+*.tflite
+*.bin
+*.h5
+weights/
+runs/
+ml-service/models/**/*.pt
+ml-service/models/**/*.onnx
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+*.pgdump
+*.dump
+
+# Datasets & Large Data
+raw_data/
+data/images/
+data/labels/
+
+# Docker volumes & data
+postgres_data/
+pgdata/
+
+# IDE & OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Temporary files & logs
+*.tmp
+*.log
